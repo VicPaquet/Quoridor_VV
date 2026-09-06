@@ -8,6 +8,7 @@ from seahorse.game.stateless_action import StatelessAction
 
 class Orientation(Enum):
     """
+    test
     Orientation of a wall
     """
     HORIZONTAL = "H"
