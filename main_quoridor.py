@@ -19,6 +19,19 @@ from seahorse.utils.custom_exceptions import PlayerDuplicateError
 from loguru import logger
 from argparse import RawTextHelpFormatter
 
+import logging
+
+logging.basicConfig(
+    filename="loggings.txt",
+    level=logging.DEBUG,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    filemode="w"  # "w" écrase le fichier à chaque exécution, "a" pour accumuler
+)
+
+logging.debug("Message de debug")
+logging.info("Message d'information")
+logging.warning("Attention")
+logging.error("Erreur")
 
 def play(player1: PlayerProxy, player2: PlayerProxy, log_level,
          port, address, gui, record, gui_path):
