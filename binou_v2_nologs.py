@@ -8,7 +8,6 @@ from game_state_quoridor import GameStateQuoridor
 from seahorse.utils.custom_exceptions import MethodNotImplementedError
 
 
-import logging
 from collections import deque
 from typing import List, Optional
 class MyPlayer(PlayerQuoridor):
@@ -115,7 +114,7 @@ class MyPlayer(PlayerQuoridor):
                 if wall_tuple not in priority:
                     priority[wall_tuple] = i  # plus i est petit, plus c'est tôt dans le chemin
         return priority
-    
+
 
     def _order_actions(self, current_state: GameStateQuoridor, actions: tuple, target_player: PlayerQuoridor) -> list:
         """
@@ -126,6 +125,7 @@ class MyPlayer(PlayerQuoridor):
         """
         player_path = self.bfs_shortest_path(current_state, target_player)
         wall_priority = self._wall_priority_from_path(current_state, player_path)
+
         def sort_key(action):
             if action.data['type'] == 'move':
                 return -1  # moves
@@ -133,16 +133,6 @@ class MyPlayer(PlayerQuoridor):
             return wall_priority.get(wall_tuple, float('inf'))  # Stray walls get the lowest priority (infinity), while walls that are part of wall_tuple are prioritized
 
         return sorted(actions, key=sort_key)
-
-    def delete_useless_walls(self, current_state: GameStateQuoridor, actions: tuple) -> tuple:
-        def is_useless(a):
-                if a.data['type'] == 'move':
-                    return False
-                row, col = a.data['destination']
-                return (row == 0 and a.data['type'] == 'vertical') or (col == 0 and a.data['type'] == 'horizontal')
-        return tuple(a for a in actions if not is_useless(a))
-
-
     
     def minimax(self, current_state: GameStateQuoridor, depth: int, maximizing_player: bool, alpha: float, beta: float) -> float:
         """
@@ -157,13 +147,21 @@ class MyPlayer(PlayerQuoridor):
         Returns:
             returns a tuple of (best_cost, best_action)
             """
-        opponent = current_state.players[1] if current_state.players[0].id == self.get_id() else current_state.players[0]
-        me = current_state.players[0] if current_state.players[0].id == self.get_id() else current_state.players[1]
         if depth == 0 or current_state.is_done():
+            if current_state.players[0].id == self.get_id():
+                me = current_state.players[0]
+                opponent = current_state.players[1]
+            else:
+                me = current_state.players[1]
+                opponent = current_state.players[0]
             cost = current_state._shortest_path(opponent) - current_state._shortest_path(me)
             return cost, None
 
-        actions = current_state.generate_possible_stateless_actions()
+        opponent = current_state.players[1] if current_state.players[0].id == self.get_id() else current_state.players[0]
+        me = current_state.players[0] if current_state.players[0].id == self.get_id() else current_state.players[1]
+
+        actions = tuple(current_state.generate_possible_stateless_actions()) #Je veux trier ces actions par ordre de priorité
+        
        
         if not actions:
             raise RuntimeError("No legal action available.")
@@ -172,40 +170,32 @@ class MyPlayer(PlayerQuoridor):
             best_cost = float('-inf')
             #Trier actions
             ordered_actions = self._order_actions(current_state, actions, opponent)
-            filtered_ordered_actions = self.delete_useless_walls(current_state, ordered_actions)
-            for action in filtered_ordered_actions:
+
+            for action in ordered_actions:
                 temp_state = current_state.apply_action(action)
                 cost, _ = self.minimax(temp_state, depth - 1, False, alpha, beta)  
-                alpha = max(alpha, cost)  
-                logging.debug(f"[MAX] depth={depth} action={action} cost={cost} alpha={alpha} beta={beta}")        
+                alpha = max(alpha, cost)     
                 if cost > best_cost:
                     best_cost = cost
                     best_action = action 
                 if beta <= alpha:
-                    logging.debug(f"[MAX-PRUNE] depth={depth} pruned after action={action} (alpha={alpha} >= beta={beta})")
+
                     break
             return best_cost, best_action
         else:
             best_cost = float('inf')
             #Trier actions
             ordered_actions = self._order_actions(current_state, actions, me)
-            logging.debug(f"[EVAL BEFORE] actions before ={len(ordered_actions)}")
 
-            filtered_ordered_actions = self.delete_useless_walls(current_state, ordered_actions)
-            logging.debug(f"[EVAL AFTER] actions after ={len(filtered_ordered_actions)}")
-
-
-            for action in filtered_ordered_actions:
+            for action in ordered_actions:
                 temp_state = current_state.apply_action(action)
                 cost, _= self.minimax(temp_state, depth - 1, True, alpha, beta)
-                logging.debug(f"[MIN] depth={depth} action={action} cost={cost} alpha={alpha} beta={beta}")
                 beta = min(beta, cost)
                 
                 if cost < best_cost:
                     best_cost = cost
                     best_action = action
                 if beta <= alpha:
-                    logging.debug(f"[MIN-PRUNE] depth={depth} pruned after action={action} (beta={beta} <= alpha={alpha})")
                     break
             return best_cost, best_action
 
@@ -227,19 +217,28 @@ class MyPlayer(PlayerQuoridor):
 
         "The cost of an action represents the difference in shortest paths for the opponent and our agent. We want to minimize the cost for the player and maximize the cost for the opponent."
         "The cost is calculated as opponent.shortest - player.shortest, so a big value is good"
+        """
+        Every move has a cost of 1, the goal would be to always add more moves to the opponent and less moves to the player to reach the end row
+        Hence two moves are possible : move or place a wall. If we place a wall, it needs to either apply or set up a >= 2 move deficit for the opponent
+        since it costs a move to place a wall
+        """
+
+        """
+        Meaning the minimax algorithm must include placing walls as a possible action.
+        A fair assumption (?) is that placing walls next to the opponent or other walls are going to have a better outcome than other wall placements.
+        This assumption cuts down computation time, but generate_possible_stateless_actions() already computes every possible wall placement.
+        If computation is too heavy, we can limit the wall placements to only those that are next to the opponent/existing walls, and add alpha beta pruning later to search deeper.
+        """
         depth = 2
         maximizing_player = self.get_id() == current_state.active_player.id
         alpha = float('-inf')
         beta = float('inf')
-        "Si le joueur adverse n'a plus de mur ET que mon chemin est plus court que le sien, foncer devant"
         if not current_state.rep.remaining_walls[current_state._opponent(self)]:
             if current_state._shortest_path(current_state._opponent(self)) - current_state._shortest_path(self) > 0:
                 me_path = self.bfs_shortest_path(current_state, self)
                 next_square = me_path[1]
                 shortcut_action = self._move_action_to(current_state, next_square)
                 if shortcut_action is not None:
-                    logging.debug(f"[SHORTCUT ACTION] type={shortcut_action.data['type']} x={shortcut_action.data['destination'][0]} y={shortcut_action.data['destination'][1]}")
                     return shortcut_action
         best_cost, best_action = self.minimax(current_state, depth, maximizing_player, alpha, beta)
-        logging.debug(f"[RESULTING MOVE] depth={depth} action={best_action} cost={best_cost} alpha={alpha} beta={beta}")
         return best_action
