@@ -134,6 +134,23 @@ class MyPlayer(PlayerQuoridor):
 
         return sorted(actions, key=sort_key)
     
+    def delete_useless_walls(self, current_state: GameStateQuoridor, actions: tuple) -> tuple:
+            """
+            Deletes from the tuple of actions the useless walls, which are the ones that are connected to the bottom of the board
+            
+            Args:
+                current_state (GameStateQuoridor): The current game state.
+                actions (tuple): The possible actions a player can make during a turn
+            Returns:
+            returns a reduced tuple of possible actions to consider    
+            """
+            def is_useless(a):
+                    if a.data['type'] == 'move':
+                        return False
+                    row, col = a.data['destination']
+                    return (row == 0 and a.data['type'] == 'vertical') or (col == 0 and a.data['type'] == 'horizontal')
+            return tuple(a for a in actions if not is_useless(a))
+    
     def minimax(self, current_state: GameStateQuoridor, depth: int, maximizing_player: bool, alpha: float, beta: float) -> float:
         """
         Minimax algorithm to evaluate the best possible move for the current player.
@@ -147,21 +164,13 @@ class MyPlayer(PlayerQuoridor):
         Returns:
             returns a tuple of (best_cost, best_action)
             """
-        if depth == 0 or current_state.is_done():
-            if current_state.players[0].id == self.get_id():
-                me = current_state.players[0]
-                opponent = current_state.players[1]
-            else:
-                me = current_state.players[1]
-                opponent = current_state.players[0]
-            cost = current_state._shortest_path(opponent) - current_state._shortest_path(me)
-            return cost, None
-
         opponent = current_state.players[1] if current_state.players[0].id == self.get_id() else current_state.players[0]
         me = current_state.players[0] if current_state.players[0].id == self.get_id() else current_state.players[1]
-
-        actions = tuple(current_state.generate_possible_stateless_actions()) #Je veux trier ces actions par ordre de priorité
+        if depth == 0 or current_state.is_done():
+            cost = current_state._shortest_path(opponent) - current_state._shortest_path(me)
+            return cost, None
         
+        actions = current_state.generate_possible_stateless_actions()
        
         if not actions:
             raise RuntimeError("No legal action available.")
@@ -170,8 +179,8 @@ class MyPlayer(PlayerQuoridor):
             best_cost = float('-inf')
             #Trier actions
             ordered_actions = self._order_actions(current_state, actions, opponent)
-
-            for action in ordered_actions:
+            filtered_ordered_actions = self.delete_useless_walls(current_state, ordered_actions)
+            for action in filtered_ordered_actions:
                 temp_state = current_state.apply_action(action)
                 cost, _ = self.minimax(temp_state, depth - 1, False, alpha, beta)  
                 alpha = max(alpha, cost)     
@@ -186,8 +195,9 @@ class MyPlayer(PlayerQuoridor):
             best_cost = float('inf')
             #Trier actions
             ordered_actions = self._order_actions(current_state, actions, me)
+            filtered_ordered_actions = self.delete_useless_walls(current_state, ordered_actions)
 
-            for action in ordered_actions:
+            for action in filtered_ordered_actions:
                 temp_state = current_state.apply_action(action)
                 cost, _= self.minimax(temp_state, depth - 1, True, alpha, beta)
                 beta = min(beta, cost)
