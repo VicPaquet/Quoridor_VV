@@ -139,7 +139,7 @@ class MyPlayer(PlayerQuoridor):
                 if a.data['type'] == 'move':
                     return False
                 row, col = a.data['destination']
-                return (row == 0 and a.data['type'] == 'vertical') or (col == 0 and a.data['type'] == 'horizontal')
+                return (row == 0 and a.data['type'] == 'horizontal') or (col == 0 and a.data['type'] == 'vertical')
         return tuple(a for a in actions if not is_useless(a))
 
 
