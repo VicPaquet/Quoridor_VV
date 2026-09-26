@@ -70,7 +70,7 @@ class MyPlayer(PlayerQuoridor):
         total_walls_left = my_walls + opp_walls
 
         # Endgame : quelqu'un est proche de l'arrivée, ou très peu de murs restent
-        if min_dist <= 3 or total_walls_left <= 5:
+        if min_dist <= 4 or total_walls_left <= 5:
             return GamePhase.ENDGAME
 
         # Opening : tout le monde est loin de l'arrivée ET plusieurs murs sont encore disponibles
@@ -191,23 +191,21 @@ class MyPlayer(PlayerQuoridor):
                 me (PlayerQuoridor): my agent
                 opponent (PlayerQuoridor): the opponent
             Returns:
-            returns a reduced tuple of possible actions to consider, focusing on a 4x4 grid on both players    
+            returns a reduced tuple of possible actions to consider, focusing on a grid on both players    
             """
         player1_position = current_state.rep.pawn_positions[player1.id]
         player2_position = current_state.rep.pawn_positions[player2.id]
         def inside_5x5(position, destination):
             center_row, center_col = position
             row, col = destination
-
             return (
-                center_row - 2 <= row <= center_row + 2
-                and
-                center_col - 2 <= col <= center_col + 2
+            center_row - 2 <= row <= center_row + 2
+            and
+            center_col - 2 <= col <= center_col + 2
             )
 
         reduced_actions = tuple(a for a in actions if (inside_5x5(player1_position, a.data['destination']) or inside_5x5(player2_position, a.data['destination'])))
         return reduced_actions
-            
     
     def minimax(self, current_state: GameStateQuoridor, depth: int, maximizing_player: bool, alpha: float, beta: float) -> float:
         """
@@ -228,8 +226,11 @@ class MyPlayer(PlayerQuoridor):
             cost = current_state._shortest_path(opponent) - current_state._shortest_path(me)
             return cost, None
 
-        actions = current_state.generate_possible_stateless_actions()
-       
+        actions = tuple(current_state.generate_possible_stateless_actions())
+
+        current_player_goal_row = current_state.active_player.get_goal_row()
+        if current_player_goal_row != 0:
+            actions = tuple(reversed(actions))       
         if not actions:
             raise RuntimeError("No legal action available.")
 
@@ -336,7 +337,7 @@ class MyPlayer(PlayerQuoridor):
                     """
         "Si mon agent n'a plus de murs, depth = 1 pour éviter les boucles d'overthink"
         if not current_state.rep.remaining_walls[current_state.active_player]:
-            depth = 1
+            depth = 5
         best_cost, best_action = self.minimax(current_state, depth, maximizing_player, alpha, beta)
         logging.debug(f"[RESULTING MOVE] depth={depth} action={best_action} cost={best_cost} alpha={alpha} beta={beta}")
         return best_action
