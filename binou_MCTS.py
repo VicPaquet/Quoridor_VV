@@ -7,7 +7,7 @@ from game_state_quoridor import GameStateQuoridor
 from seahorse.utils.custom_exceptions import MethodNotImplementedError
 import math
 import random
-from binou_chooser import Chooser
+from fonctions.binou_chooser import Chooser
 from typing import Optional
 import logging
 logging.basicConfig(level=logging.DEBUG, format="%(message)s")
