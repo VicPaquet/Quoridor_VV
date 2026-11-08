@@ -13,7 +13,7 @@ import logging
 logging.basicConfig(level=logging.DEBUG, format="%(message)s")
 log = logging.getLogger("mcts")
 #K = 6
-K_MOVES, K_WALLS = 4, 55
+K_MOVES, K_WALLS = 4, 30
 class GamePhase(Enum):
     OPENING = "opening"
     MIDGAME = "midgame"
@@ -32,7 +32,7 @@ def determine_game_phase(current_state: GameStateQuoridor, me: PlayerQuoridor, o
     total_walls_left = my_walls + opp_walls
 
     # Lategame : quelqu'un est proche de l'arrivée, ou peu de murs restent
-    if min_dist <= 5 or total_walls_left <= 10:
+    if min_dist <= 4 or total_walls_left <= 14:
         return GamePhase.LATEGAME
 
     # Opening : tout le monde est loin de l'arrivée ET plusieurs murs sont encore disponibles
@@ -99,10 +99,15 @@ class Node:
         ordered = list(self.chooser._order_actions(self.state, actions, self.state.active_player))
         filtered = list(self.chooser.delete_useless_walls(self.state, ordered))
         limited = list(self.chooser.square_grid(self.state, filtered, self.opponent, self.me))
-        if len(limited) < 50:
-            log.debug(f"[CANDIDATES] {len(filtered)} actions candidates après FILTREES (moins de 50)")
+        if self.parent is None:  
+            log.debug(f"[CANDIDATES] before minimax (timestamp)")         
+            minimaxed = list(self.chooser.filter_best_actions(self.state, limited)) if len(limited) > 30 else list(self.chooser.filter_best_actions(self.state, filtered))
+            log.debug(f"[CANDIDATES] {len(minimaxed)} actions candidates apres MINIMAX (racine)")
+            return minimaxed
+        if len(limited) < 30:
+            log.debug(f"[CANDIDATES] {len(filtered)} actions candidates après FILTREES (moins de 30)")
             return self._cut(filtered)
-        log.debug(f"[CANDIDATES] {len(limited)} actions candidates LIMITEES (plus de 50)")
+        log.debug(f"[CANDIDATES] {len(limited)} actions candidates LIMITEES (plus ou egal à 30)")
         return self._cut(limited) or self._cut(filtered)
 
     
@@ -131,7 +136,7 @@ def expand(node: Node):
     node.children[action] = child
     return child
 
-def simulate_with_random(node: Node, sim_player: Chooser, max_depth: int, epsilon = 0.2) :
+def simulate_with_random(node: Node, sim_player: Chooser, max_depth: int, epsilon = 0.1) :
     depth = 0
     current_state = node.state
     while not current_state.is_done() and depth < max_depth:
@@ -226,13 +231,20 @@ class MyPlayer(PlayerQuoridor):
         my_id = self.get_id()
         chooser = Chooser(self.piece_type, self.goal_row, self.name)
         chooser.id = self.id
-
+        "Si le joueur adverse n'a plus de mur ET que mon chemin est plus court que le sien, foncer devant"
+        if not current_state.rep.remaining_walls[current_state._opponent(self)]:
+            if current_state._shortest_path(current_state._opponent(self)) - current_state._shortest_path(self) > 0:
+                me_path = chooser.bfs_shortest_path(current_state, self)
+                next_square = me_path[1]
+                shortcut_action = chooser._move_action_to(current_state, next_square)
+                if shortcut_action is not None:
+                    return shortcut_action
         if phase == GamePhase.LATEGAME:    
             log.debug(f"[PHASE] LATEGAME")
-            best_action = self.mcts(current_state, 800, chooser, my_id, sim_depth = 0)
+            best_action = self.mcts(current_state, 600, chooser, my_id, sim_depth = 0)
         elif phase == GamePhase.MIDGAME:
             log.debug(f"[PHASE] MIDGAME")
-            best_action = chooser.compute_action(current_state, 3)
+            best_action = self.mcts(current_state, 600, chooser, my_id, sim_depth = 0)
         else:
             log.debug(f"[PHASE] OPENING")
             best_action = chooser.compute_action(current_state, 1)

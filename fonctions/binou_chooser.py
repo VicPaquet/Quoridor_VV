@@ -178,6 +178,21 @@ class Chooser(PlayerQuoridor):
                             or self.in_path(a, player1_path)
                             or self.in_path(a, player2_path)))
         return reduced_actions
+
+    def filter_best_actions(self, current_state: GameStateQuoridor, actions: list, K = 20) -> tuple:
+        """
+        Uses the minimax algorithm to filter the K best actions from the given tuple of actions. The minimax looks 2 moves ahead.
+        """
+        
+        best_actions = []
+        for action in actions:
+            temp_state = current_state.apply_action(action)
+            cost, _ = self.minimax(temp_state, 1, False, float('-inf'), float('inf'))
+            best_actions.append((cost, action))
+        best_actions.sort(key=lambda x: x[0], reverse=True)
+        return tuple(action for _, action in best_actions[:K])
+        
+
     
     def minimax(self, current_state: GameStateQuoridor, depth: int, maximizing_player: bool, alpha: float, beta: float) -> float:
         """
@@ -246,6 +261,7 @@ class Chooser(PlayerQuoridor):
                 if beta <= alpha:
                     break
             return best_cost, best_action
+
 
         
     def compute_action(self, current_state: GameStateQuoridor, d: int, remaining_time: float = 15*60, **kwargs) -> Action:
