@@ -9,12 +9,16 @@ import math
 import random
 from fonctions.binou_chooser import Chooser
 from typing import Optional
+import logging
+logging.basicConfig(level=logging.DEBUG, format="%(message)s")
+log = logging.getLogger("mcts")
 #K = 6
-K_MOVES, K_WALLS = 3, 40
+K_MOVES, K_WALLS = 3, 25
 class GamePhase(Enum):
     OPENING = "opening"
     MIDGAME = "midgame"
     LATEGAME = "lategame"
+    ENDGAME = "endgame"
 def determine_game_phase(current_state: GameStateQuoridor, me: PlayerQuoridor, opponent: PlayerQuoridor)->GamePhase:
     """
     Détermine la phase de la partie selon la distance restante des joueurs
@@ -27,6 +31,9 @@ def determine_game_phase(current_state: GameStateQuoridor, me: PlayerQuoridor, o
     my_walls = current_state.rep.remaining_walls[me.id]
     opp_walls = current_state.rep.remaining_walls[opponent.id]
     total_walls_left = my_walls + opp_walls
+    
+    if my_walls == 0:
+        return GamePhase.ENDGAME
 
     # Lategame : quelqu'un est proche de l'arrivée, ou peu de murs restent
     if min_dist <= 4 or total_walls_left <= 14:
@@ -35,8 +42,7 @@ def determine_game_phase(current_state: GameStateQuoridor, me: PlayerQuoridor, o
     # Opening : tout le monde est loin de l'arrivée ET plusieurs murs sont encore disponibles
     if min_dist >= 6 and total_walls_left >= 17: 
         return GamePhase.OPENING
-
-
+    
     # Sinon, on est entre les trois
     return GamePhase.MIDGAME
 class Node:
@@ -144,6 +150,7 @@ def simulate_with_random(node: Node, sim_player: Chooser, max_depth: int, epsilo
     if current_state.is_done():
         return current_state._opponent(current_state.active_player).get_id(), None
     cost = current_state._shortest_path(node.opponent) - current_state._shortest_path(node.me)
+    log.debug(f"Simulated node depth: {_depth(node)}")
     return None, (1 / (1 + math.exp(-cost / 2)))
 
 def backprop(node: Node, winner, me: PlayerQuoridor, value = None):
@@ -202,6 +209,7 @@ class MyPlayer(PlayerQuoridor):
         enfants = sorted(root.children.values(), key=lambda ch: -ch.N)
         for ch in enfants:
             q = ch.U / ch.N if ch.N else float('nan')
+            log.debug(f"N: {ch.N}, Q: {q:.4f}, U: {ch.U:.4f}, Depth: {_depth(ch)}")
         #Returns the action with the highest visit count 
         return max(root.children.values(), key=lambda ch: ch.N).action
 
@@ -229,9 +237,15 @@ class MyPlayer(PlayerQuoridor):
                 if shortcut_action is not None:
                     return shortcut_action
         if phase == GamePhase.LATEGAME:    
-            best_action = self.mcts(current_state, 600, chooser, my_id, sim_depth = 0)
+            log.debug(f"Phase: {phase}, using MCTS with 1500 simulations")
+            best_action = self.mcts(current_state, 1500, chooser, my_id, sim_depth = 0)
         elif phase == GamePhase.MIDGAME:
-            best_action = self.mcts(current_state, 600, chooser, my_id, sim_depth = 0)
+            log.debug(f"Phase: {phase}, using MCTS with 1200 simulations")
+            best_action = self.mcts(current_state, 1200, chooser, my_id, sim_depth = 0)
+        elif phase == GamePhase.ENDGAME:
+            log.debug(f"Phase: {phase}, using MCTS with 150 simulations")
+            best_action = self.mcts(current_state, 150, chooser, my_id, sim_depth = 0)
         else:
+            log.debug(f"Phase: {phase}, using minimax with depth 1")
             best_action = chooser.compute_action(current_state, 1)
         return best_action
